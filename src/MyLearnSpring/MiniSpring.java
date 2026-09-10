@@ -1,94 +1,213 @@
 package MyLearnSpring;
 
-import java.io.File;
-import java.lang.reflect.Method;
-import java.net.URL;
+import java.lang.annotation.ElementType;
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
+import java.lang.annotation.Target;
+import java.lang.reflect.*;
 import java.util.*;
 
 public class MiniSpring {
 
     public static void main(String[] args) throws Exception {
-        // 1. 假装扫描了硬盘上的 com.test 包，拿到了所有类的 Class 对象（这里简化，只拿两个）
-        List<Class<?>> allClasses = Arrays.asList(UserService.class, OrderService.class, NoAnnotationClass.class);
 
-        // 2. 建立一个容器（就是个 Map），用来存放创建好的对象
+        // 1. 要扫描的类列表（注意：是 UserServiceImpl，不是 UserService 接口）
+        List<Class<?>> allClasses = Arrays.asList(
+                UserServiceImpl.class,
+                OrderService.class,
+                NoAnnotationClass.class
+        );
+
         Map<String, Object> container = new HashMap<>();
-        //key是名字，values是创建好的对象
-        // 3. 遍历所有类，这是反射 + 注解的灵魂！
+
+        // ========================================================
+        // 【第一轮】第一板斧：创建所有原始对象
+        // ========================================================
+        System.out.println("===== 阶段一：创建 Bean 实例 =====");
         for (Class<?> clazz : allClasses) {
-            // 【好兄弟 A（注解）上场】
-            // 调用反射 API：获取该类头上是否贴了 MyComponent 这个标签
-            MyComponent annotation = clazz.getAnnotation(MyComponent.class);
+            MyComponent anno = clazz.getAnnotation(MyComponent.class);
+            if (anno == null) {
+                System.out.println("【跳过】" + clazz.getSimpleName() + " 没有 @MyComponent");
+                continue;
+            }
+            String beanName = anno.value().isEmpty()
+                    ? clazz.getSimpleName().toLowerCase()
+                    : anno.value();
 
-            // 4. 如果注解不为 null（说明有标记），执行【第一板斧：创建对象】
-            if (annotation != null) {
-                // 获取注解里写的名字，如果没写就用类名小写作为默认名
-                String beanName = annotation.value().isEmpty() ? clazz.getSimpleName().toLowerCase() : annotation.value();
+            Object instance = clazz.getDeclaredConstructor().newInstance();
+            container.put(beanName, instance);
+            System.out.println("创建 Bean: " + beanName + " (原始类: " + clazz.getSimpleName() + ")");
+        }
 
-                // 【第一板斧】暴力创建对象（就是调用无参构造器）
-                Object instance = clazz.getDeclaredConstructor().newInstance();
+        // ========================================================
+        // 【第二轮】第三板斧：注入依赖（field.set）
+        // ========================================================
+        System.out.println("\n===== 阶段二：依赖注入 =====");
+        for (Class<?> clazz : allClasses) {
+            MyComponent anno = clazz.getAnnotation(MyComponent.class);
+            if (anno == null) continue;
 
-                // ========== 【第二板斧】动态调用初始化方法 ==========
-                // 1. 获取当前类的所有方法（包括私有的）
-                Method[] methods = clazz.getDeclaredMethods();
-                for (Method method : methods) {
-                    // 2. 检查这个方法上是否贴了 @MyInit 标签
-                    MyInit initAnno = method.getAnnotation(MyInit.class);
-                    if (initAnno != null) {
-                        // 3. 如果方法是 private 的，砸锁
-                        method.setAccessible(true);
-                        // 4. 执行这个方法（传入 instance，因为它是成员方法）
-                        method.invoke(instance);
-                        System.out.println("【框架】成功调用初始化方法: " + method.getName());
+            String beanName = anno.value().isEmpty()
+                    ? clazz.getSimpleName().toLowerCase()
+                    : anno.value();
+            Object instance = container.get(beanName);
+
+            for (Field field : clazz.getDeclaredFields()) {
+                if (field.getAnnotation(MyAutowired.class) != null) {
+                    Class<?> fieldType = field.getType();
+                    String depName = fieldType.getSimpleName().toLowerCase();
+                    Object dependency = container.get(depName);
+
+                    if (dependency == null) {
+                        throw new RuntimeException("找不到依赖: " + fieldType.getName());
                     }
+                    field.setAccessible(true);
+                    field.set(instance, dependency);
+                    System.out.println("【注入】" + clazz.getSimpleName()
+                            + "." + field.getName() + " ← " + fieldType.getSimpleName());
                 }
-// ========== 【第二板斧】结束 ==========
+            }
+        }
+// ========================================================
+// 【第三轮】第二板斧：调用初始化方法（在原始对象上，还没代理）
+// ========================================================
+        System.out.println("\n===== 阶段三：调用初始化方法 =====");
+        for (Class<?> clazz : allClasses) {
+            MyComponent anno = clazz.getAnnotation(MyComponent.class);
+            if (anno == null) continue;
 
+            String beanName = anno.value().isEmpty()
+                    ? clazz.getSimpleName().toLowerCase()
+                    : anno.value();
+            Object instance = container.get(beanName);  // ← 此时还是原始对象
 
-                // 放进容器里存起来
-                container.put(beanName, instance);
-                System.out.println("【Spring 启动】成功创建 Bean: " + beanName);
-            } else {
-                System.out.println("【跳过】" + clazz.getSimpleName() + " 没有 @MyComponent 注解，忽略");
+            for (Method method : clazz.getDeclaredMethods()) {
+                if (method.getAnnotation(MyInit.class) != null) {
+                    method.setAccessible(true);
+                    method.invoke(instance);  // ✅ 原始对象执行原始方法，合法！
+                    System.out.println("【框架】调用了初始化方法: " + method.getName());
+                }
             }
         }
 
-        // 5. 验证成果：从容器里拿出来用
-        System.out.println("容器里的对象：" + container);
+// ========================================================
+// 【第四轮】AOP：生成代理对象，替换容器里的原始对象
+// ========================================================
+        System.out.println("\n===== 阶段四：生成 AOP 代理 =====");
+        for (Class<?> clazz : allClasses) {
+            MyComponent anno = clazz.getAnnotation(MyComponent.class);
+            if (anno == null) continue;
+
+            String beanName = anno.value().isEmpty()
+                    ? clazz.getSimpleName().toLowerCase()
+                    : anno.value();
+            Object instance = container.get(beanName);  // 拿到完整对象
+
+            if (hasLogAnnotation(clazz)) {
+                Object proxy = createProxy(instance);
+                container.put(beanName, proxy);   // ★★★ 关键：把代理放回容器 ★★★
+                System.out.println("【AOP】为 " + clazz.getSimpleName()
+                        + " 生成了代理: " + proxy.getClass().getName());
+            }
+        }
+        // ========================================================
+        // 验证
+        // ========================================================
+        System.out.println("\n===== 验证成果 =====");
+        System.out.println("容器内容: " + container);
+
+        // 关键：用【接口】来强转
         UserService user = (UserService) container.get("userService");
-        if (user != null) user.hello();
+        if (user != null) {
+            user.hello();
+        }
+    }
+
+    // 判断类里有没有方法贴了 @MyLog
+    static boolean hasLogAnnotation(Class<?> clazz) {
+        for (Method method : clazz.getDeclaredMethods()) {
+            if (method.getAnnotation(MyLog.class) != null) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // 创建 JDK 动态代理
+    static Object createProxy(Object target) {
+        return Proxy.newProxyInstance(
+                target.getClass().getClassLoader(),
+                target.getClass().getInterfaces(),
+                (proxy, method, args) -> {
+                    MyLog logAnno = method.getAnnotation(MyLog.class);
+                    if (logAnno != null) {
+                        System.out.println("【AOP日志】开始: " + method.getName());
+                        Object result = method.invoke(target, args);
+                        System.out.println("【AOP日志】结束: " + method.getName());
+                        return result;
+                    }
+                    return method.invoke(target, args);
+                }
+        );
     }
 }
 
-//// ---- 定义两个用于测试的类 ----
-//@MyComponent("userService")
-//class UserService {
-//    @MyInit
-//    public void init() {
-//        System.out.println("【第二板斧】UserService 的 init() 方法被框架自动调用了！");
-//    }
-//    public void hello() { System.out.println("UserService 执行了！"); }
+// ============================================================
+// 注解定义
+// ============================================================
+
+//@Retention(RetentionPolicy.RUNTIME)
+//@Target(ElementType.TYPE)
+//@interface MyComponent {
+//    String value() default "";
 //}
 //
-//@MyComponent // 没写名字，默认就用类名小写 "orderService"
-//class OrderService { }
+//@Retention(RetentionPolicy.RUNTIME)
+//@Target(ElementType.FIELD)
+//@interface MyAutowired {
+//}
 //
-//class NoAnnotationClass { } // 没贴注解，框架绝不管它
+//@Retention(RetentionPolicy.RUNTIME)
+//@Target(ElementType.METHOD)
+//@interface MyLog {
+//}
+//
+//@Retention(RetentionPolicy.RUNTIME)
+//@Target(ElementType.METHOD)
+//@interface MyInit {
+//}
+
+// ============================================================
+// 业务类
+// ============================================================
+
+// 接口
+interface UserService {
+    @MyLog
+    void hello();
+}
+
+// 实现类
 @MyComponent("userService")
-class UserService {
+class UserServiceImpl implements UserService {
 
-    // 贴标签！告诉框架：我需要你给我找个 OrderService 塞进来
     @MyAutowired
-    private OrderService orderService;  // 注意：这里是 private，且没有赋值
+    private OrderService orderService;
 
-    // 为了验证注入是否成功，我们加一个打印方法
+    @MyInit
+    public void init() {
+        System.out.println("【初始化】UserServiceImpl 的 init() 被调用了");
+    }
+
+    @MyLog
+    @Override
     public void hello() {
-        System.out.println("UserService 执行了！");
+        System.out.println("UserServiceImpl 执行了！");
         if (orderService != null) {
-            System.out.println("【验证】orderService 已成功注入，地址是：" + orderService);
-            orderService.doSomething(); // 调用一下看看是否真的能用
+            System.out.println("【验证】orderService 已成功注入: " + orderService);
+            orderService.doSomething();
         } else {
-            System.out.println("【失败】orderService 是 null，注入没成功！");
+            System.out.println("【失败】orderService 是 null");
         }
     }
 }
@@ -100,4 +219,5 @@ class OrderService {
     }
 }
 
-class NoAnnotationClass { }
+class NoAnnotationClass {
+}
