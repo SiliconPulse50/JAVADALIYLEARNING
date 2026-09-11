@@ -11,7 +11,7 @@ public static void main(String[] args) {
     double[] arr_random=new double[total_count];
 
     boolean[] isRemoved = new boolean[36000];
-
+//用布尔数组标记是否被去除true=是
     for(int i=0;i<total_count;i++){
         arr_random[i]=Math.random()*(maxn-minn)+minn;
     }
@@ -35,7 +35,7 @@ public static void main(String[] args) {
     //  剔除最小的 remove(1800) 个
     for(int k=0;k<remove;k++){ // 循环1800次，每次剔除1个当前最小
         int minIdx = -1;
-        double givenmin = Double.POSITIVE_INFINITY;//设置一个无限大的由于比较
+        double givenmin = Double.POSITIVE_INFINITY;//设置一个无限大的用于比较
         for(int i=0;i<total_count;i++){
             if(!isRemoved[i] && arr_random[i] < givenmin){
                 givenmin = arr_random[i];

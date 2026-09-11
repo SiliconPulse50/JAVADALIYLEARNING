@@ -104,7 +104,7 @@ public class MiniSpring {
             Object instance = container.get(beanName);  // 拿到完整对象
 
             if (hasLogAnnotation(clazz)) {
-                Object proxy = createProxy(instance);
+                Object proxy = createProxy(instance);//这里生成了代理对象
                 container.put(beanName, proxy);   // ★★★ 关键：把代理放回容器 ★★★
                 System.out.println("【AOP】为 " + clazz.getSimpleName()
                         + " 生成了代理: " + proxy.getClass().getName());
@@ -134,6 +134,7 @@ public class MiniSpring {
     }
 
     // 创建 JDK 动态代理
+    //拦截器
     static Object createProxy(Object target) {
         return Proxy.newProxyInstance(
                 target.getClass().getClassLoader(),
@@ -146,6 +147,7 @@ public class MiniSpring {
                         System.out.println("【AOP日志】结束: " + method.getName());
                         return result;
                     }
+                    //执行器，反射api ，拦截器内部，调用真实对象的方法
                     return method.invoke(target, args);
                 }
         );

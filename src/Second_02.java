@@ -3,7 +3,7 @@ public class Second_02 {
     public static void main(String[] args) {
         //输入字符串
         //元音字母往后移动，保持原有相对顺序
-        Scanner sc=new Scanner (System.in);
+        Scanner sc=new Scanner (System.in);//输入
         System.out.println("请输入一个字符串");
         String str=sc.next();
         //字符串转为char数组
@@ -20,7 +20,7 @@ public class Second_02 {
         //vCount：记录一共找到多少个元音
         int vCount = 0;
 
-        //【单层循环！不要嵌套】遍历原字符数组，收集所有元音的下标
+        //遍历原字符数组，收集所有元音的下标
         for(int i=0;i<len;i++){
             //判断是否为元音，大小写都判断
             if (chars[i]=='a'||chars[i]=='e'||chars[i]=='i'||chars[i]=='o'||chars[i]=='u'
