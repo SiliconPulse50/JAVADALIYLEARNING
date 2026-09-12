@@ -106,6 +106,7 @@ public class MiniSpring {
             if (hasLogAnnotation(clazz)) {
                 Object proxy = createProxy(instance);//这里生成了代理对象
                 container.put(beanName, proxy);   // ★★★ 关键：把代理放回容器 ★★★
+                //核心代理对象没有业务逻辑，只会把调用转发给你写的lambda,lambda里有机会插入日志
                 System.out.println("【AOP】为 " + clazz.getSimpleName()
                         + " 生成了代理: " + proxy.getClass().getName());
             }
@@ -119,7 +120,7 @@ public class MiniSpring {
         // 关键：用【接口】来强转
         UserService user = (UserService) container.get("userService");
         if (user != null) {
-            user.hello();
+            user.hello();//调用出发代理
         }
     }
 
@@ -139,14 +140,20 @@ public class MiniSpring {
         return Proxy.newProxyInstance(
                 target.getClass().getClassLoader(),
                 target.getClass().getInterfaces(),
+                //代理的工作手册
+                //lambda把调用信息传出去
+                //proxy $proxy5这个代理对象，method=Userservice.hello  args=null因为hello没有参数
                 (proxy, method, args) -> {
-                    MyLog logAnno = method.getAnnotation(MyLog.class);
+                    MyLog logAnno = method.getAnnotation(MyLog.class);//拦截的规则，检查有没有@MyLog
                     if (logAnno != null) {
+                        //拦截成功打印日志
                         System.out.println("【AOP日志】开始: " + method.getName());
-                        Object result = method.invoke(target, args);
+                        Object result = method.invoke(target, args);//调用真身
+                        //target在阶段4传给createProxy(instance)的原始对象（UserServiceImpl实例)
                         System.out.println("【AOP日志】结束: " + method.getName());
                         return result;
                     }
+                    //没贴标签，不拦截直接放行
                     //执行器，反射api ，拦截器内部，调用真实对象的方法
                     return method.invoke(target, args);
                 }
