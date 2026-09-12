@@ -142,7 +142,7 @@ MIT License — 随便用，随便改，能帮到你就好。
 
 **Star 这个仓库** ⭐，让更多同学通过 MiniSpring 走进 Java 底层世界！
 
-##我的收获
+## 我的收获
 一、你说的完全对，这就是软件开发的**两层世界**
 层次	是什么	谁在干
 底层原理	反射、注解、动态代理、IoC、AOP	你自己手写 MiniSpring
@@ -227,6 +227,3 @@ text
 ├── @PostConstruct
 ├── @Transactional
 └── @Aspect / @Before / @Around
-有了这张地图，你以后看到任何 Spring 注解，都会本能地想：“这底层是不是反射+代理？”
-
-
